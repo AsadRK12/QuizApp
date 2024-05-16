@@ -3,11 +3,13 @@
 {% block title %}Create Quiz - Quiz App{% endblock %}
 
 {% block content %}
-<h1>Create Quiz</h1>
-<form method="POST">
-    <label for="quiz_title">Quiz Title:</label>
-    <input type="text" id="quiz_title" name="quiz_title" required><br>
-    <button type="submit">Create Quiz</button>
-</form>
-<a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+<div class="container">
+    <h1>Create Quiz</h1>
+    <form method="POST">
+        <label for="quiz_title">Quiz Title:</label>
+        <input type="text" id="quiz_title" name="quiz_title" required><br>
+        <button type="submit" class="btn">Create Quiz</button>
+    </form>
+    <a href="{{ url_for('dashboard') }}" class="btn">Back to Dashboard</a>
+</div>
 {% endblock %}

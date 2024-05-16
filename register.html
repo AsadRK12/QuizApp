@@ -3,15 +3,17 @@
 {% block title %}Register - Quiz App{% endblock %}
 
 {% block content %}
-<h1>Register</h1>
-<form method="POST">
-    <label for="username">Username:</label>
-    <input type="text" id="username" name="username" required><br>
-    <label for="password">Password:</label>
-    <input type="password" id="password" name="password" required><br>
-    <label for="is_teacher">Register as Teacher:</label>
-    <input type="checkbox" id="is_teacher" name="is_teacher"><br>
-    <button type="submit">Register</button>
-</form>
-<a href="{{ url_for('login') }}">Already have an account? Login here</a>
+<div class="container">
+    <h1>Register</h1>
+    <form method="POST">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required><br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required><br>
+        <label for="is_teacher">Register as Teacher:</label>
+        <input type="checkbox" id="is_teacher" name="is_teacher"><br>
+        <button type="submit" class="btn">Register</button>
+    </form>
+    <a href="{{ url_for('login') }}">Already have an account? Login here</a>
+</div>
 {% endblock %}

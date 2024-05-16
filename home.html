@@ -3,6 +3,9 @@
 {% block title %}Home - Quiz App{% endblock %}
 
 {% block content %}
-<h1>Welcome to the Quiz App</h1>
-<a href="{{ url_for('register') }}">Register</a> | <a href="{{ url_for('login') }}">Login</a>
+<div class="container">
+    <h1>Welcome to the Quiz App</h1>
+    <a href="{{ url_for('register') }}" class="btn">Register</a> 
+    <a href="{{ url_for('login') }}" class="btn">Login</a>
+</div>
 {% endblock %}

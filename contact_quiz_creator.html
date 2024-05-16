@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Contact Quiz Creator - Quiz App{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Contact Quiz Creator: {{ creator.username }}</h1>
+    <form method="POST">
+        <label for="message">Your Message:</label><br>
+        <textarea id="message" name="message" rows="5" cols="50" required></textarea><br>
+        <button type="submit" class="btn">Send Message</button>
+    </form>
+    <a href="{{ url_for('dashboard') }}" class="btn">Back to Dashboard</a>
+</div>
+{% endblock %}

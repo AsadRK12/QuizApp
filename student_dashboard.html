@@ -3,13 +3,15 @@
 {% block title %}Student Dashboard - Quiz App{% endblock %}
 
 {% block content %}
-<h1>Welcome, {{ user.username }}</h1>
-<h2>Your Classes</h2>
-<ul>
-    {% for class in user.classes %}
-    <li>{{ class.name }}</li>
-    {% endfor %}
-</ul>
-<a href="{{ url_for('create_quiz') }}">Create New Quiz</a><br>
-<a href="{{ url_for('logout') }}">Logout</a>
+<div class="container">
+    <h1>Welcome, {{ user.username }}</h1>
+    <h2>Your Classes</h2>
+    <ul>
+        {% for class in user.classes %}
+        <li>{{ class.name }}</li>
+        {% endfor %}
+    </ul>
+    <a href="{{ url_for('create_quiz') }}" class="btn">Create New Quiz</a><br>
+    <a href="{{ url_for('logout') }}" class="btn">Logout</a>
+</div>
 {% endblock %}
