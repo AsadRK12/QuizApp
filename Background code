@@ -1,0 +1,154 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'  # Secret key for session management
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quizapp.db'  # SQLite database URI
+db = SQLAlchemy(app)
+
+# Database Models
+
+class User(db.Model):
+    """User model for storing user details"""
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+    is_teacher = db.Column(db.Boolean, default=False)  # Boolean flag to differentiate teachers from students
+
+class Class(db.Model):
+    """Class model for storing class details"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    students = db.relationship('User', secondary='class_student', backref='classes')  # Many-to-Many relationship with User
+
+class ClassStudent(db.Model):
+    """Association table for many-to-many relationship between Class and User"""
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class Quiz(db.Model):
+    """Quiz model for storing quiz details"""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    questions = db.relationship('Question', backref='quiz')  # One-to-Many relationship with Question
+
+class Question(db.Model):
+    """Question model for storing quiz questions"""
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.String(500), nullable=False)
+    answer = db.Column(db.String(150), nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+
+# Routes
+
+@app.route('/')
+def home():
+    """Home route displaying the main page"""
+    return render_template('home.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Route for user registration"""
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        is_teacher = 'is_teacher' in request.form  # Check if the user is a teacher
+        hashed_password = generate_password_hash(password, method='sha256')  # Hash the password
+        new_user = User(username=username, password=hashed_password, is_teacher=is_teacher)
+        db.session.add(new_user)
+        db.session.commit()  # Save the new user to the database
+        flash('Registration successful!', 'success')
+        return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Route for user login"""
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):  # Verify the password
+            session['user_id'] = user.id
+            session['is_teacher'] = user.is_teacher
+            flash('Login successful!', 'success')
+            return redirect(url_for('dashboard'))
+        flash('Login failed. Check your credentials and try again.', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Route for user logout"""
+    session.pop('user_id', None)
+    session.pop('is_teacher', None)
+    flash('You have been logged out.', 'success')
+    return redirect(url_for('home'))
+
+@app.route('/dashboard')
+def dashboard():
+    """Route for displaying the user dashboard"""
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+    
+    user = User.query.get(session['user_id'])
+    if user.is_teacher:
+        classes = Class.query.filter_by(teacher_id=user.id).all()  # Fetch classes for the teacher
+        return render_template('teacher_dashboard.html', user=user, classes=classes)
+    else:
+        return render_template('student_dashboard.html', user=user)
+
+@app.route('/create_class', methods=['GET', 'POST'])
+def create_class():
+    """Route for creating a new class (teachers only)"""
+    if 'user_id' not in session or not session.get('is_teacher'):
+        flash('Unauthorized access.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        class_name = request.form['class_name']
+        new_class = Class(name=class_name, teacher_id=session['user_id'])
+        db.session.add(new_class)
+        db.session.commit()
+        flash('Class created successfully!', 'success')
+        return redirect(url_for('dashboard'))
+    return render_template('create_class.html')
+
+@app.route('/create_quiz', methods=['GET', 'POST'])
+def create_quiz():
+    """Route for creating a new quiz"""
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        quiz_title = request.form['quiz_title']
+        new_quiz = Quiz(title=quiz_title, creator_id=session['user_id'])
+        db.session.add(new_quiz)
+        db.session.commit()
+        flash('Quiz created successfully!', 'success')
+        return redirect(url_for('dashboard'))
+    return render_template('create_quiz.html')
+
+@app.route('/contact_quiz_creator/<int:creator_id>', methods=['GET', 'POST'])
+def contact_quiz_creator(creator_id):
+    """Route for contacting the quiz creator"""
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    creator = User.query.get(creator_id)
+    if request.method == 'POST':
+        message = request.form['message']
+        flash('Your message has been sent!', 'success')
+        # Logic to send message to the quiz creator can be added here
+        return redirect(url_for('dashboard'))
+    return render_template('contact_quiz_creator.html', creator=creator)
+
+if __name__ == '__main__':
+    db.create_all()  # Create database tables if they don't exist
+    app.run(debug=True)  # Run the Flask app
