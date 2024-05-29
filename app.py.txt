@@ -1,0 +1,291 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+import logging
+from logging.handlers import RotatingFileHandler
+import traceback
+import unittest
+from app import app, db, User, Class, ClassStudent, Quiz, Question
+
+# Set up Flask app
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quizapp.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+print("SQLALCHEMY_TRACK_MODIFICATIONS:", app.config['SQLALCHEMY_TRACK_MODIFICATIONS'])
+
+
+# Setup logging
+if not app.debug:
+    # Set up detailed logging to a file
+    file_handler = RotatingFileHandler('error.log', maxBytes=10240, backupCount=10)
+    file_handler.setLevel(logging.ERROR)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
+    app.logger.addHandler(file_handler)
+    # Also, log to console
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.ERROR)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
+    app.logger.addHandler(console_handler)
+
+# Define models
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+    is_teacher = db.Column(db.Boolean, default=False)
+
+class Class(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    students = db.relationship('User', secondary='class_student', backref='classes')
+
+class ClassStudent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class Quiz(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    questions = db.relationship('Question', backref='quiz')
+
+class Question(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.String(500), nullable=False)
+    answer = db.Column(db.String(150), nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+
+ 
+class FlaskAppTests(unittest.TestCase):
+    def setUp(self):
+        app.config['TESTING'] = True
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        self.client = app.test_client()
+        db.create_all()
+ 
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+ 
+    def test_home_route(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Welcome to Quiz App", response.data)
+ 
+    def test_register_route(self):
+        response = self.client.post('/register', data={'username': 'test_user', 'password': 'test_password'})
+        self.assertEqual(response.status_code, 302)  # Check if redirecting after registration
+        self.assertEqual(User.query.count(), 1)
+        self.assertEqual(User.query.first().username, 'test_user')
+        print("User successfully registered")
+ 
+    def test_login_route(self):
+        user = User(username='test_user', password='test_password')
+        db.session.add(user)
+        db.session.commit()
+ 
+        response = self.client.post('/login', data={'username': 'test_user', 'password': 'test_password'})
+        self.assertEqual(response.status_code, 302)  # Check if redirecting after login
+        with self.client.session_transaction() as session:
+            self.assertEqual(session['user_id'], user.id)
+        print("User successfully logged in")
+ 
+    def test_logout_route(self):
+        with self.client.session_transaction() as session:
+            session['user_id'] = 1  # Assuming user with ID 1 is logged in
+ 
+        response = self.client.get('/logout')
+        self.assertEqual(response.status_code, 302)  # Check if redirecting after logout
+        with self.client.session_transaction() as session:
+            self.assertNotIn('user_id', session)
+        print("User successfully logged out")
+ 
+    def test_database_models(self):
+        # Create test data for database models
+        user = User(username='test_user', password='test_password')
+        db.session.add(user)
+        db.session.commit()
+        print("User successfully added")
+ 
+        class_obj = Class(name='Test Class', teacher_id=user.id)
+        db.session.add(class_obj)
+        db.session.commit()
+        print("Class successfully added")
+ 
+        class_student = ClassStudent(class_id=class_obj.id, student_id=user.id)
+        db.session.add(class_student)
+        db.session.commit()
+        print("ClassStudent successfully added")
+ 
+        quiz = Quiz(title='Test Quiz', creator_id=user.id)
+        db.session.add(quiz)
+        db.session.commit()
+        print("Quiz successfully added")
+ 
+        question = Question(text='Test Question', answer='Test Answer', quiz_id=quiz.id)
+        db.session.add(question)
+        db.session.commit()
+        print("Question successfully added")
+ 
+        # Retrieve and verify data from database
+        self.assertEqual(User.query.count(), 1)
+        self.assertEqual(Class.query.count(), 1)
+        self.assertEqual(ClassStudent.query.count(), 1)
+        self.assertEqual(Quiz.query.count(), 1)
+        self.assertEqual(Question.query.count(), 1)
+ 
+        self.assertEqual(user.classes[0].name, 'Test Class')
+        self.assertEqual(class_obj.teacher_id, user.id)
+        self.assertEqual(class_student.class_id, class_obj.id)
+        self.assertEqual(class_student.student_id, user.id)
+        self.assertEqual(quiz.title, 'Test Quiz')
+        self.assertEqual(question.text, 'Test Question')
+        self.assertEqual(question.answer, 'Test Answer')
+        print("Data retrieved and verified")
+# Error handler
+@app.errorhandler(Exception)
+def handle_exception(e):
+    error_trace = traceback.format_exc()
+    # Log the error with traceback
+    app.logger.error('%s\n%s' % (str(e), error_trace))
+    # Print to stdout or stderr
+    print('%s\n%s' % (str(e), error_trace))
+    return render_template('error.html'), 500
+
+# Routes
+@app.route('/')
+def home():
+    return render_template('home.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        is_teacher = 'is_teacher' in request.form
+
+        if not username or not password:
+            flash('Please enter both username and password', 'danger')
+            return render_template('register.html')
+
+        try:
+            hashed_password = generate_password_hash(password, method='sha256')
+            new_user = User(username=username, password=hashed_password, is_teacher=is_teacher)
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Registration successful!', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            app.logger.error(f"Error occurred during registration: {e}")
+            print(f"Error occurred during registration: {e}")
+            flash('An error occurred during registration', 'danger')
+            return render_template('register.html')
+
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['is_teacher'] = user.is_teacher
+            flash('Login successful!', 'success')
+            return redirect(url_for('dashboard'))
+        flash('Login failed. Check your credentials and try again.', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('is_teacher', None)
+    flash('You have been logged out.', 'success')
+    return redirect(url_for('home'))
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+    
+    user = User.query.get(session['user_id'])
+    if user.is_teacher:
+        classes = Class.query.filter_by(teacher_id=user.id).all()
+        return render_template('teacher_dashboard.html', user=user, classes=classes)
+    else:
+        return render_template('student_dashboard.html', user=user)
+
+@app.route('/create_class', methods=['GET', 'POST'])
+def create_class():
+    if 'user_id' not in session or not session.get('is_teacher'):
+        flash('Unauthorized access.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        class_name = request.form['class_name']
+        new_class = Class(name=class_name, teacher_id=session['user_id'])
+        try:
+            db.session.add(new_class)
+            db.session.commit()
+            flash('Class created successfully!', 'success')
+            return redirect(url_for('dashboard'))
+        except Exception as e:
+            app.logger.error(f"Error occurred while creating class: {e}")
+            print(f"Error occurred while creating class: {e}")
+            flash('An error occurred while creating the class', 'danger')
+            return render_template('create_class.html')
+    return render_template('create_class.html')
+
+@app.route('/create_quiz', methods=['GET', 'POST'])
+def create_quiz():
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        quiz_title = request.form['quiz_title']
+        new_quiz = Quiz(title=quiz_title, creator_id=session['user_id'])
+        try:
+            db.session.add(new_quiz)
+            db.session.commit()
+            flash('Quiz created successfully!', 'success')
+            return redirect(url_for('dashboard'))
+        except Exception as e:
+            app.logger.error(f"Error occurred while creating quiz: {e}")
+            print(f"Error occurred while creating quiz: {e}")
+            flash('An error occurred while creating the quiz', 'danger')
+            return render_template('create_quiz.html')
+    return render_template('create_quiz.html')
+
+@app.route('/contact_quiz_creator/<int:creator_id>', methods=['GET', 'POST'])
+def contact_quiz_creator(creator_id):
+    if 'user_id' not in session:
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    creator = User.query.get(creator_id)
+    if request.method == 'POST':
+        message = request.form['message']
+        try:
+            # Logic to send message to the quiz creator can be added here
+            flash('Your message has been sent!', 'success')
+            return redirect(url_for('dashboard'))
+        except Exception as e:
+            app.logger.error(f"Error occurred while sending message: {e}")
+            print(f"Error occurred while sending message: {e}")
+            flash('An error occurred while sending the message', 'danger')
+            return render_template('contact_quiz_creator.html', creator=creator)
+    return render_template('contact_quiz_creator.html', creator=creator)
+
+if __name__ == '__main__':
+    with app.app_context():
+        try:
+            db.create_all()
+            app.logger.info("Database tables created successfully.")
+        except Exception
